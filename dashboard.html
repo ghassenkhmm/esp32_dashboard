@@ -1,0 +1,187 @@
+  <!DOCTYPE html>
+  <html lang="fr">
+  <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tableau de bord ESP32</title>
+  <style>
+    :root {
+      --bg: #f4f6fa; --card: #ffffff; --text: #1b2330; --muted: #6b7686;
+      --border: #e1e6ee; --accent: #2f6fed; --on: #1fa463; --off: #8a94a6;
+      --temp: #e8572a; --hum: #2f9bd6; --danger: #d64545;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #11151c; --card: #1a2029; --text: #e8ecf3; --muted: #8f9bb0;
+        --border: #2a3342; --accent: #5b8cff; --on: #3ccf8e; --off: #6b7686;
+        --temp: #ff7a50; --hum: #5ab8f0; --danger: #ff6b6b;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px 16px 40px; background: var(--bg); color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    .wrap { max-width: 860px; margin: 0 auto; }
+    header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+    h1 { font-size: 1.4rem; margin: 0; }
+    h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 28px 0 10px; }
+    .status { display: flex; align-items: center; gap: 8px; font-size: .85rem; color: var(--muted); }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--off); }
+    .dot.ok { background: var(--on); }
+    .dot.err { background: var(--danger); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+    .card .label { font-size: .85rem; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }
+    .value { font-size: 2.6rem; font-weight: 600; margin: 10px 0 6px; font-variant-numeric: tabular-nums; }
+    .value small { font-size: 1.1rem; font-weight: 500; color: var(--muted); margin-left: 4px; }
+    .bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .bar > div { height: 100%; width: 0; border-radius: 3px; transition: width .4s ease; }
+    .temp .bar > div { background: var(--temp); }
+    .hum .bar > div { background: var(--hum); }
+    .led-state { font-size: 1.6rem; font-weight: 600; margin: 10px 0 14px; display: flex; align-items: center; gap: 10px; }
+    .bulb { width: 18px; height: 18px; border-radius: 50%; background: var(--off); transition: all .25s; }
+    .led.on .bulb { background: var(--on); box-shadow: 0 0 12px var(--on); }
+    .led.on .led-state span { color: var(--on); }
+    .btns { display: flex; gap: 8px; }
+    button {
+      flex: 1; padding: 10px 12px; font-size: .95rem; font-weight: 600; border-radius: 10px; cursor: pointer;
+      border: 1px solid var(--border); background: transparent; color: var(--text); transition: all .15s;
+    }
+    button:hover { border-color: var(--accent); }
+    button.active-on { background: var(--on); border-color: var(--on); color: #fff; }
+    button.active-off { background: var(--off); border-color: var(--off); color: #fff; }
+    button:disabled { opacity: .5; cursor: wait; }
+    .msg { margin-top: 18px; font-size: .85rem; color: var(--danger); min-height: 1.2em; }
+    footer { margin-top: 24px; font-size: .8rem; color: var(--muted); }
+  </style>
+  </head>
+  <body>
+  <div class="wrap">
+    <header>
+      <h1>Tableau de bord ESP32</h1>
+      <div class="status"><span class="dot" id="dot"></span><span id="statusText">Connexion…</span></div>
+    </header>
+
+    <h2>Capteur DHT22</h2>
+    <div class="grid">
+      <div class="card temp">
+        <div class="label"><span>Température</span></div>
+        <div class="value"><span id="temp">--</span><small>°C</small></div>
+        <div class="bar"><div id="tempBar"></div></div>
+      </div>
+      <div class="card hum">
+        <div class="label"><span>Humidité</span></div>
+        <div class="value"><span id="hum">--</span><small>%</small></div>
+        <div class="bar"><div id="humBar"></div></div>
+      </div>
+    </div>
+
+    <h2>Commande des LEDs</h2>
+    <div class="grid">
+      <div class="card led" id="card1">
+        <div class="label"><span>LED 1</span></div>
+        <div class="led-state"><div class="bulb"></div><span id="state1">--</span></div>
+        <div class="btns">
+          <button id="on1">Allumer</button>
+          <button id="off1">Éteindre</button>
+        </div>
+      </div>
+      <div class="card led" id="card2">
+        <div class="label"><span>LED 2</span></div>
+        <div class="led-state"><div class="bulb"></div><span id="state2">--</span></div>
+        <div class="btns">
+          <button id="on2">Allumer</button>
+          <button id="off2">Éteindre</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="msg" id="msg"></div>
+    <footer>Dernière actualisation : <span id="updated">--</span> (toutes les 2 secondes)</footer>
+  </div>
+
+  <script>
+  // ---- Configuration Firebase (mêmes valeurs que dans le code ESP32) ----
+  const DB_URL = "https://controle-leds-ee716-default-rtdb.europe-west1.firebasedatabase.app";
+  const API_KEY = "AIzaSyDLc3-43rQo1JN2AAIe74nD1ZyNO4spkcM";
+  const REFRESH_MS = 2000;
+
+  const endpoint = `${DB_URL}/.json?auth=${API_KEY}`;
+  const $ = (id) => document.getElementById(id);
+  let busy = false; // évite que l'actualisation écrase un clic en cours
+
+  function setStatus(ok, text) {
+    $("dot").className = "dot " + (ok ? "ok" : "err");
+    $("statusText").textContent = text;
+  }
+
+  function showLed(n, on) {
+    if (typeof on !== "boolean") return;
+    $("card" + n).classList.toggle("on", on);
+    $("state" + n).textContent = on ? "Allumée" : "Éteinte";
+    $("on" + n).className = on ? "active-on" : "";
+    $("off" + n).className = !on ? "active-off" : "";
+  }
+
+  function showNumber(id, barId, value, min, max) {
+    if (typeof value !== "number") { $(id).textContent = "--"; return; }
+    $(id).textContent = value.toFixed(1);
+    const pct = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
+    $(barId).style.width = pct + "%";
+  }
+
+  async function refresh() {
+    if (busy) return;
+    try {
+      const res = await fetch(endpoint, { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json() || {};
+
+      showLed(1, data.Led_1);
+      showLed(2, data.Led_2);
+
+      const dht = data.dht22 || {};
+      showNumber("temp", "tempBar", dht.temperature, -10, 50);
+      showNumber("hum", "humBar", dht.humidite, 0, 100);
+
+      $("updated").textContent = new Date().toLocaleTimeString("fr-FR");
+      $("msg").textContent = "";
+      setStatus(true, "Connecté à Firebase");
+    } catch (e) {
+      setStatus(false, "Hors ligne");
+      $("msg").textContent = "Impossible de joindre Firebase : " + e.message;
+    }
+  }
+
+  async function setLed(n, value) {
+    busy = true;
+    const buttons = [$("on" + n), $("off" + n)];
+    buttons.forEach((b) => (b.disabled = true));
+    try {
+      const res = await fetch(endpoint, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ["Led_" + n]: value })
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      showLed(n, value);
+      $("msg").textContent = "";
+    } catch (e) {
+      $("msg").textContent = "Échec de l'envoi : " + e.message;
+    } finally {
+      buttons.forEach((b) => (b.disabled = false));
+      busy = false;
+    }
+  }
+
+  [1, 2].forEach((n) => {
+    $("on" + n).addEventListener("click", () => setLed(n, true));
+    $("off" + n).addEventListener("click", () => setLed(n, false));
+  });
+
+  refresh();
+  setInterval(refresh, REFRESH_MS);
+  </script>
+  </body>
+  </html>
